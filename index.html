@@ -9,6 +9,8 @@
 <meta property="og:title" content="Orbit Courier">
 <meta property="og:description" content="One tap. Slingshot between planets and deliver parcels. Can you beat today's Daily Route?">
 <meta property="og:type" content="website">
+<meta property="og:image" content="https://steveg-dev.github.io/orbit-courier/covers/cover-1920x1080.png">
+<meta name="twitter:image" content="https://steveg-dev.github.io/orbit-courier/covers/cover-1920x1080.png">
 <meta name="twitter:card" content="summary">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23070a1a'/%3E%3Ccircle cx='32' cy='34' r='13' fill='%234cc9f0'/%3E%3Ccircle cx='32' cy='34' r='22' fill='none' stroke='%23ffd166' stroke-width='3' stroke-dasharray='5 5'/%3E%3Cpath d='M46 12l6 4-7 2z' fill='%23fff'/%3E%3C/svg%3E">
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23070a1a'/%3E%3Ccircle cx='32' cy='34' r='13' fill='%234cc9f0'/%3E%3Ccircle cx='32' cy='34' r='22' fill='none' stroke='%23ffd166' stroke-width='3' stroke-dasharray='5 5'/%3E%3C/svg%3E">
@@ -145,22 +147,83 @@
 <script>
 (() => {
 'use strict';
+const COVER = /[?&]cover\b/.test(location.search);   // ?cover: marketing captures with no on-screen text (portals allow only the title)
 
-/* ---------- Portal / ads adapter ----------
-   Everything money-related goes through here, so listing the game on
-   CrazyGames, Poki or GameDistribution means swapping these bodies for
-   their SDK calls and nothing else. */
-const Portal = {
-  gameplayStart(){}, gameplayStop(){},
-  rewarded(){ return fakeAd(); },        // resolves true if the player earned the reward
-  interstitial(){ return fakeAd(); },
-};
-function fakeAd(){
-  return new Promise(res => {
-    const el = $('ad'), n = $('adN'); let s = 3; n.textContent = s; el.classList.add('on');
-    const iv = setInterval(() => { s--; n.textContent = s; if (s <= 0){ clearInterval(iv); el.classList.remove('on'); res(true); } }, 1000);
+/* ================= Portal / ads adapter =================
+   One block, identical in every game (source: Game Studio/_shared/portal.js).
+   On CrazyGames it loads their SDK v3 and sends ads and gameplay events through it.
+   Anywhere else there is no ad network: rewards are granted straight away and
+   between-game ads are skipped. Add ?adtest to a URL to see a 3-second placeholder
+   where an ad would play; add ?cg on localhost to run the real SDK in its local mode. */
+const Portal = (() => {
+  const q = location.search;
+  const onPortal = /(^|\.)crazygames\.[a-z.]+$/i.test(location.hostname) || /[?&]cg\b/.test(q);
+  const adTest = /[?&]adtest\b/.test(q);
+  let sdk = null, siteMuted = false, adPlaying = false, playing = false;
+
+  // keep a handle on every AudioContext the game creates, so sound can pause for ads and the site's mute switch
+  const contexts = [], applyAudio = () => { for (const c of contexts){ try { (siteMuted || adPlaying) ? c.suspend() : c.resume(); } catch(e){} } };
+  const NativeAC = window.AudioContext || window.webkitAudioContext;
+  if (NativeAC){
+    const Tracked = function(...args){ const c = new NativeAC(...args); contexts.push(c); if (siteMuted || adPlaying) c.suspend(); return c; };
+    Tracked.prototype = NativeAC.prototype;
+    window.AudioContext = Tracked; if (window.webkitAudioContext) window.webkitAudioContext = Tracked;
+  }
+
+  const ready = !onPortal ? Promise.resolve() : new Promise(done => {
+    const s = document.createElement('script');
+    s.src = 'https://sdk.crazygames.com/crazygames-sdk-v3.js';
+    s.onload = async () => {
+      try {
+        await window.CrazyGames.SDK.init(); sdk = window.CrazyGames.SDK;
+        const onSettings = st => { siteMuted = !!(st && st.muteAudio); applyAudio(); };
+        onSettings(sdk.game.settings); sdk.game.addSettingsChangeListener(onSettings);
+        if (playing) sdk.game.gameplayStart();
+      } catch(e){ sdk = null; }
+      done();
+    };
+    s.onerror = () => done();          // an ad blocker can stop the SDK loading; the game still has to work
+    document.head.appendChild(s);
   });
-}
+
+  function placeholder(){
+    return new Promise(res => {
+      adPlaying = true; applyAudio();
+      const el = document.getElementById('ad'), n = document.getElementById('adN'); let s = 3; n.textContent = s; el.classList.add('on');
+      const iv = setInterval(() => { s--; n.textContent = s; if (s <= 0){ clearInterval(iv); el.classList.remove('on'); adPlaying = false; applyAudio(); res(true); } }, 1000);
+    });
+  }
+  function gameplayStart(){ if (playing) return; playing = true; if (sdk) try { sdk.game.gameplayStart(); } catch(e){} }
+  function gameplayStop(){ if (!playing) return; playing = false; if (sdk) try { sdk.game.gameplayStop(); } catch(e){} }
+  // resolves true only when the player earned the reward
+  function requestAd(type){
+    return new Promise(async res => {
+      await ready;
+      if (!sdk){
+        if (adTest) return placeholder().then(res);
+        // off-portal there is no ad to watch, so the reward is free; on CrazyGames with no SDK (ad blocker) there is no reward
+        return res(type !== 'rewarded' || !onPortal);
+      }
+      const wasPlaying = playing; gameplayStop();
+      // after the ad, put gameplay back the way it was (the game itself restarts it after a revive)
+      const done = ok => { adPlaying = false; applyAudio(); if (wasPlaying) gameplayStart(); res(ok); };
+      try {
+        sdk.ad.requestAd(type === 'rewarded' ? 'rewarded' : 'midgame', {
+          adStarted(){ adPlaying = true; applyAudio(); },
+          adFinished(){ done(true); },
+          adError(){ done(false); },       // never reward a failed ad
+        });
+      } catch(e){ done(false); }
+    });
+  }
+  return {
+    onPortal,
+    rewarded: () => requestAd('rewarded'),
+    interstitial: () => requestAd('midgame'),
+    gameplayStart, gameplayStop,
+    happytime(){ if (sdk) try { sdk.game.happytime(); } catch(e){} },
+  };
+})();
 
 /* ---------- Helpers ---------- */
 const $ = id => document.getElementById(id);
@@ -303,7 +366,7 @@ function crash(reason){
   G.state = 'dead'; G.reason = reason; G.shake = 14;
   burst(G.x, G.y, '#ff5d73', 34); burst(G.x, G.y, skinColor(G.t), 18);
   sfx.crash();
-  try { navigator.vibrate && navigator.vibrate(120); } catch(e){}
+  try { if (navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) navigator.vibrate(120); } catch(e){}
   Portal.gameplayStop();
   if (G.mode === 'daily'){ G.results.push('💥'); setTimeout(() => finishDaily(false), 900); }
   else setTimeout(showOver, 900);
@@ -490,7 +553,7 @@ let last = performance.now();
 let loggedErr = false;
 function frame(now){
   requestAnimationFrame(frame);                 // schedule first, so one bad frame can never freeze the game
-  const dt = Math.min((now - last) / 1000, 1 / 30); last = now;
+  const dt = Math.max(0, Math.min((now - last) / 1000, 1 / 30)); last = now;   // never negative: a frame can be stamped before a click reset `last`
   try {
     if (G && screen === 'play' && !paused) update(dt);
     else if (G && G.state === 'dead') update(dt * .5);   // let the explosion play out under the overlay
@@ -594,7 +657,7 @@ setInterval(() => { if (screen === 'daily') tickCountdown(); }, 30000);
 async function share(r){
   const cells = [...r.grid]; const rows = [];
   for (let i = 0; i < cells.length; i += 10) rows.push(cells.slice(i, i + 10).join(''));
-  const url = /^https?:/.test(location.href) ? '\n' + location.origin + location.pathname : '';
+  const url = !Portal.onPortal && /^https?:/.test(location.href) ? '\n' + location.origin + location.pathname : '';
   const text = `Orbit Courier · Daily Route #${dailyNumber()}\n📦 ${r.delivered}/${DAILY_LEN}` + (r.success ? ` · ⏱ ${r.time}s` : '') + `\n${rows.join('\n')}${url}`;
   try { if (navigator.share){ await navigator.share({ text }); return; } } catch(e){ if (e && e.name === 'AbortError') return; }
   try { await navigator.clipboard.writeText(text); toast('Copied. Paste it anywhere'); }
@@ -643,7 +706,7 @@ $('pauseBtn').onclick = pause;
 $('muteBtn').onclick = () => { save.muted = !save.muted; persist(); refreshMenu(); };
 
 refreshMenu();
-if (/[?&]debug\b/.test(location.search)) window.__oc = { get G(){ return G; }, launch, startRun, step: dt => update(dt), consts: { FLY_SPEED, PLAYER_R } };
+if (/[?&]debug\b/.test(location.search)) window.__oc = { get G(){ return G; }, launch, startRun, step: dt => update(dt), draw, consts: { FLY_SPEED, PLAYER_R } };
 })();
 </script>
 </body>
