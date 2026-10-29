@@ -487,12 +487,18 @@ function drawStar(x, y, r, rot){
 
 /* ---------- Loop ---------- */
 let last = performance.now();
+let loggedErr = false;
 function frame(now){
+  requestAnimationFrame(frame);                 // schedule first, so one bad frame can never freeze the game
   const dt = Math.min((now - last) / 1000, 1 / 30); last = now;
-  if (G && screen === 'play' && !paused) update(dt);
-  else if (G && G.state === 'dead') update(dt * .5);   // let the explosion play out under the overlay
-  draw();
-  requestAnimationFrame(frame);
+  try {
+    if (G && screen === 'play' && !paused) update(dt);
+    else if (G && G.state === 'dead') update(dt * .5);   // let the explosion play out under the overlay
+    draw();
+  } catch(err){
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.setLineDash([]); ctx.shadowBlur = 0;
+    if (!loggedErr){ loggedErr = true; console.error('Orbit Courier frame error', err); }
+  }
 }
 requestAnimationFrame(frame);
 
