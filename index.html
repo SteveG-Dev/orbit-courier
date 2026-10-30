@@ -137,6 +137,36 @@
   #ad.on{display:flex}
   #ad .t{font-size:13px;color:#888}
   #ad .n{font-size:40px;font-weight:900}
+  /* daily missions (menu + game over) */
+  .mis{margin-top:14px;text-align:left;border-radius:16px;padding:10px 12px 8px;background:rgba(6,10,34,.55);border:1px solid rgba(120,155,255,.25)}
+  .mis .mh{display:flex;justify-content:space-between;align-items:baseline;font-weight:900;font-size:15px;color:#fff;margin-bottom:4px}
+  .mis .mh small{font-weight:700;font-size:12px;color:var(--muted)}
+  .mrow{display:flex;align-items:center;gap:10px;padding:5px 0}
+  .mrow+.mrow{border-top:1px solid rgba(255,255,255,.07)}
+  .mchk{width:22px;height:22px;flex:none;border-radius:50%;border:2px solid rgba(160,180,255,.45);display:grid;place-items:center}
+  .mrow.done .mchk{background:linear-gradient(180deg,#ffe27a,#ffbe2e);border-color:#ffe9a6;box-shadow:0 0 10px rgba(255,180,40,.6)}
+  .mchk svg{width:13px;height:13px;color:#2a1800}
+  .mtx{flex:1;min-width:0;font-size:13.5px;font-weight:700;color:#dfe5ff;line-height:1.2}
+  .mrow.done .mtx{color:#9aa6d6}
+  .mbar{display:block;height:5px;border-radius:3px;background:rgba(255,255,255,.1);margin-top:4px;overflow:hidden}
+  .mbar i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,#7fa2ff,#ffd166)}
+  .mrw{flex:none;display:inline-flex;align-items:center;gap:3px;font-size:13px;font-weight:900;color:var(--gold)}
+  .mrw svg{width:14px;height:14px}
+  .mrow.new{background:linear-gradient(90deg,rgba(255,200,60,.22),rgba(255,200,60,0));border-radius:10px;margin:0 -6px;padding:5px 6px}
+  .mis.small{margin-top:12px;padding:8px 10px 6px}
+  .mis.small .mtx{font-size:12.5px}
+  /* mission / login pop: slides down from the top, never blocks play */
+  #mpop{position:fixed;left:0;right:0;margin:0 auto;width:max-content;top:calc(104px + env(safe-area-inset-top));transform:translateY(-30px);opacity:0;z-index:9;pointer-events:none;transition:transform .35s cubic-bezier(.2,1.4,.4,1),opacity .3s;
+    display:flex;align-items:center;gap:12px;padding:10px 18px 10px 12px;border-radius:18px;max-width:calc(100vw - 24px);
+    background:linear-gradient(180deg,rgba(40,58,140,.95),rgba(14,20,60,.97));border:1.5px solid rgba(255,196,90,.9);box-shadow:0 0 22px rgba(255,170,50,.5),0 10px 30px rgba(0,0,0,.5)}
+  #mpop.on{transform:translateY(0);opacity:1}
+  #mpop.low{top:auto;bottom:calc(18px + env(safe-area-inset-bottom));transform:translateY(30px)}
+  #mpop.low.on{transform:translateY(0)}
+  @media (max-width:430px){ #mpop b{font-size:14px} #mpop small{font-size:12px} #mpop{padding:8px 14px 8px 10px;gap:10px} #mpop .pi{width:30px;height:30px} }
+  #mpop .pi{width:36px;height:36px;flex:none;border-radius:50%;display:grid;place-items:center;background:linear-gradient(180deg,#ffe27a,#ffbe2e);box-shadow:0 0 12px rgba(255,180,40,.7)}
+  #mpop .pi svg{width:20px;height:20px;color:#2a1800}
+  #mpop b{display:block;font-size:15px;font-weight:900;color:#fff}
+  #mpop small{display:block;font-size:13px;font-weight:700;color:#ffe9a6}
   @media (max-height:640px){ .card{padding:20px 20px 16px} .tag{margin:8px 0 14px} .btn{margin-top:9px;padding:12px 14px} .btn.primary{padding:13px} .stats{margin-top:14px} .big{font-size:60px} }
 </style>
 </head>
@@ -204,6 +234,7 @@
       <div><b><svg><use href="#i-star"/></svg><span id="mCoins">0</span></b>stars</div>
       <div><b><svg><use href="#i-flame"/></svg><span id="mStreak">0</span></b>day streak</div>
     </div>
+    <div class="mis" id="mMis"></div>
     <button class="sound" id="muteBtn"><svg><use id="muteIco" href="#i-sound"/></svg><span id="muteTx">Sound: on</span></button>
   </div>
 </div>
@@ -217,6 +248,7 @@
     <button class="btn primary" id="againBtn"><svg><use href="#i-play"/></svg>Play again</button>
     <button class="btn" id="oMenuBtn"><svg><use href="#i-home"/></svg>Menu</button>
     <div class="stats"><div><b><svg><use href="#i-star"/></svg><span id="oCoins">0</span></b>stars earned</div><div><b><svg><use href="#i-star"/></svg><span id="oTotal">0</span></b>total stars</div></div>
+    <div class="mis small" id="oMis"></div>
   </div>
 </div>
 
@@ -255,6 +287,7 @@
 
 <div id="ad"><div class="t">AD PLACEHOLDER</div><div class="n" id="adN">3</div><div class="t">A portal ad (CrazyGames / Poki) plays here</div></div>
 <div id="toast"></div>
+<div id="mpop"><span class="pi"><svg><use href="#i-check"/></svg></span><span><b id="mpopT"></b><small id="mpopS"></small></span></div>
 
 <script>
 (() => {
@@ -347,8 +380,83 @@ const EPOCH = new Date(2026, 9, 28);
 function dailyNumber(){ const t = new Date(); t.setHours(0,0,0,0); return Math.round((t - EPOCH) / 864e5) + 1; }
 
 const SAVE_KEY = 'orbitcourier.v1';
-const save = Object.assign({ best:0, coins:0, owned:[0], skin:0, daily:{}, streak:0, lastDaily:'', muted:false, runs:0 }, (() => { try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch(e){ return {}; } })());
+const save = Object.assign({ best:0, coins:0, owned:[0], skin:0, daily:{}, streak:0, lastDaily:'', muted:false, runs:0, mis:null, login:null, seen:{} }, (() => { try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch(e){ return {}; } })());
 function persist(){ try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch(e){} }
+
+/* ---------- Daily missions + login streak ----------
+   Three missions a day, the same for everyone on a given date. Progress lives in the save;
+   finishing one pays stars straight away. The login bonus grows for 7 days in a row, then holds. */
+const MISSIONS = [
+  { id:'run15',   t:'Deliver 15 parcels in one run',  n:15, r:20, max:true },
+  { id:'del40',   t:'Deliver 40 parcels',              n:40, r:20 },
+  { id:'perf8',   t:'Land 8 Perfects',                 n:8,  r:15 },
+  { id:'x4',      t:'Reach a ×4 Perfect streak',       n:4,  r:20, max:true },
+  { id:'star20',  t:'Collect 20 stars in flight',      n:20, r:15 },
+  { id:'ice3',    t:'Catch 3 ice planets',             n:3,  r:15 },
+  { id:'gas3',    t:'Catch 3 gas giants',              n:3,  r:15 },
+  { id:'pul2',    t:'Launch from 2 pulsars',           n:2,  r:20 },
+  { id:'daily',   t:"Play today's Daily Route",        n:1,  r:15 },
+  { id:'runs5',   t:'Play 5 runs',                     n:5,  r:10 },
+  { id:'score25', t:'Score 25 in one run',             n:25, r:20, max:true },
+  { id:'close3',  t:'Survive 3 close calls',           n:3,  r:15 },
+];
+const LOGIN_REWARD = [5, 8, 12, 16, 20, 25, 35];
+function strHash(str){ let h = 2166136261; for (let i = 0; i < str.length; i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+function missionsToday(){
+  const day = dayKey();
+  if (!save.mis || save.mis.day !== day || !Array.isArray(save.mis.list)){
+    const r = mulberry32(strHash('oc-missions-' + day)), pool = MISSIONS.map(m => m.id), list = [];
+    while (list.length < 3){ const id = pool.splice(Math.floor(r() * pool.length), 1)[0]; list.push({ id, p: 0, done: false }); }
+    save.mis = { day, list }; persist();
+  }
+  return save.mis.list;
+}
+// add to (or, for one-run missions, raise) a mission's progress
+function mprog(id, v, isMax = false){
+  for (const it of missionsToday()){
+    if (it.id !== id || it.done) continue;
+    const def = MISSIONS.find(m => m.id === id); if (!def) continue;
+    it.p = isMax ? Math.max(it.p, v) : it.p + v;
+    if (it.p >= def.n){
+      it.p = def.n; it.done = true; save.coins += def.r;
+      if (G){ (G.newDone = G.newDone || []).push(id); if (screen === 'play') updateHud(); } else if (screen === 'menu') refreshMenu();
+      announce('Mission complete!', `${def.t} · +${def.r} ★`); if (!save.muted) [660, 880, 1175].forEach((f, k) => setTimeout(() => tone(f, .14, 'triangle', .06), k * 80));
+      buzz([20, 30, 40]);
+    }
+    persist();
+  }
+}
+const popQ = []; let popBusy = false;
+function announce(title, sub){ if (COVER) return; popQ.push([title, sub]); if (!popBusy) nextPop(); }
+function nextPop(){
+  const n = popQ.shift(); if (!n){ popBusy = false; return; }
+  popBusy = true; $('mpopT').textContent = n[0]; $('mpopS').textContent = n[1];
+  const el = $('mpop'); el.classList.toggle('low', screen !== 'play'); void el.offsetWidth; el.classList.add('on');   // off the play screen it sits at the bottom, clear of the cards
+  setTimeout(() => { el.classList.remove('on'); setTimeout(nextPop, 380); }, 2600);
+}
+function checkLogin(){
+  const k = dayKey(), y = dayKey(new Date(Date.now() - 864e5));
+  const L = save.login || { last: '', streak: 0 };
+  if (L.last === k) return;
+  L.streak = L.last === y ? L.streak + 1 : 1; L.last = k; save.login = L;
+  const reward = LOGIN_REWARD[Math.min(L.streak, 7) - 1];
+  save.coins += reward; persist();
+  if (screen === 'menu') refreshMenu(); else if (G && screen === 'play') updateHud();
+  announce(L.streak > 1 ? `Day ${L.streak} in a row!` : 'Welcome back, courier!', `Daily bonus +${reward} ★` + (L.streak < 7 ? ` · tomorrow +${LOGIN_REWARD[L.streak]} ★` : ''));
+}
+function missionRows(newOnes){
+  const list = missionsToday();
+  return list.map(it => {
+    const def = MISSIONS.find(m => m.id === it.id), pct = Math.round(it.p / def.n * 100);
+    const cls = 'mrow' + (it.done ? ' done' : '') + (newOnes && newOnes.includes(it.id) ? ' new' : '');
+    return `<div class="${cls}"><span class="mchk">${it.done ? '<svg><use href="#i-check"/></svg>' : ''}</span><span class="mtx">${def.t}${it.done ? '' : ` <small style="color:var(--muted);font-weight:700">${it.p}/${def.n}</small><span class="mbar"><i style="width:${pct}%"></i></span>`}</span><span class="mrw">+${def.r}<svg><use href="#i-star"/></svg></span></div>`;
+  }).join('');
+}
+function renderMissions(){
+  const list = missionsToday(), done = list.filter(m => m.done).length;
+  const t = new Date(), nx = new Date(t); nx.setHours(24, 0, 0, 0); const h = Math.floor((nx - t) / 36e5), m = Math.floor((nx - t) % 36e5 / 6e4);
+  $('mMis').innerHTML = `<div class="mh">Daily missions <small>${done}/3 · new in ${h}h ${String(m).padStart(2, '0')}m</small></div>` + missionRows();
+}
 
 /* ---------- Sound ---------- */
 let AC = null;
@@ -413,7 +521,17 @@ const PALS = [
   { base:'#cf5b93', hi:'#ffb6d8', lo:'#3e0828', glow:'255,120,190', kind:'rock' },   // rose
   { base:'#8b90a6', hi:'#e6e9f2', lo:'#20232d', glow:'200,210,240', kind:'rock' },   // moon
 ];
-const palOf = p => PALS[Math.floor(p.hue / 360 * PALS.length) % PALS.length];
+// special planet types have their own look
+const KIND_PAL = {
+  ice: { base:'#86d8f2', hi:'#f4fdff', lo:'#1d4a78', glow:'170,235,255', kind:'rock' },
+  gas: { base:'#e2874e', hi:'#ffe2b4', lo:'#5c1e40', glow:'255,170,120', kind:'gas' },
+};
+const KIND_INFO = {
+  ice:    { label:'ICE · faster orbit',        color:'#aeefff' },
+  gas:    { label:'GAS GIANT · slow and wide', color:'#ffbf8a' },
+  pulsar: { label:'PULSAR · launch = shield',  color:'#b7f4ff' },
+};
+const palOf = p => KIND_PAL[p.kind] || PALS[Math.floor(p.hue / 360 * PALS.length) % PALS.length];
 function withAlpha(c, a){
   if (c[0] === '#'){ const n = parseInt(c.slice(1), 16); return `rgba(${n >> 16},${n >> 8 & 255},${n & 255},${a})`; }
   return c.replace('hsl(', 'hsla(').replace(')', `,${a})`);
@@ -629,7 +747,9 @@ function newRun(mode, practice = false){
         score: 0, delivered: 0, combo: 1, coins: 0, t: 0, state: 'orbit', camY: 0, shake: 0,
         continued: false, results: [], maxIdx: 0, flyT: 0, launched: false, warnT: 0,
         // game feel: hit-stop, slow motion, camera punch, expanding rings, big centre pop-ups
-        hitStop: 0, slowT: 0, punch: 0, rings: [], big: null, starChain: 0, starT: 0 };
+        hitStop: 0, slowT: 0, punch: 0, rings: [], big: null, starChain: 0, starT: 0,
+        // planet types come from their own random stream, so the Daily Route's layout is unchanged
+        krng: mulberry32((seed ^ 0x5bd1e995) >>> 0), shield: 0, newDone: [], counted: false, seenNext: -1 };
   const first = { idx: 0, x: W / 2, baseX: W / 2, y: 0, r: 30, ring: 88, hue: 210, moving: false, ringed: true, goal: false };
   G.planets.push(first);
   for (let i = 0; i < 6; i++) genNext();
@@ -650,6 +770,13 @@ function genNext(){
   const p = { idx: n, x, baseX: x, y: prev.y - gap, r, ring: r + 74 - d * 20, hue: rng() * 360,
               moving: !goal && n > 5 && rng() < .2 + d * .4, amp: 25 + rng() * 55, spd: .5 + rng() * .9, ph: rng() * TAU,
               ringed: rng() < .3, goal };
+  // special planets, introduced after the first few deliveries
+  if (!goal && n >= 6){
+    const k = G.krng();
+    if (k < .17) p.kind = 'ice';
+    else if (k < .31){ p.kind = 'gas'; p.r = Math.min(p.r * 1.3, 40); p.ring = p.r + 74 - d * 20 + 5; p.ringed = true; }
+    else if (k < .41 && n >= 10){ p.kind = 'pulsar'; p.r = Math.max(14, p.r * .72); p.ringed = false; }
+  }
   G.planets.push(p);
   if (rng() < .6) G.items.push({ type: 'coin', x: clamp((x + prev.baseX) / 2 + (rng() - .5) * 90, 30, W - 30), y: (p.y + prev.y) / 2 + (rng() - .5) * 40, got: false, ph: rng() * TAU });
   if (n > 8 && rng() < .15 + d * .35){
@@ -670,6 +797,11 @@ function launch(){
   const tx = -Math.sin(G.a) * G.dir, ty = Math.cos(G.a) * G.dir;
   G.vx = tx * FLY_SPEED; G.vy = ty * FLY_SPEED;
   G.state = 'fly'; G.from = G.cur; G.leftFrom = false; G.flyT = 0;
+  if (G.cur.kind === 'pulsar'){
+    G.shield = 2.6; ring(G.x, G.y, '#b7f4ff', 60); addText(G.x, G.y - 18, 'SHIELD!', '#b7f4ff'); buzz(25);
+    if (!save.muted){ tone(700, .2, 'sine', .06, 2.2); }
+    mprog('pul2', 1);
+  }
   if (!G.launched){ G.launched = true; $('hint').style.opacity = 0; }
   sfx.launch();
 }
@@ -697,6 +829,10 @@ function capture(p, dx, dy, dist){
     if (G.combo === 5 && G.lastCombo !== 5) bigText('MAX STREAK ×5!', '#ff9a3c');
   } else { sfx.catch(G.delivered); addText(p.x, p.y - p.r - 18, '+1', '#eef1ff'); G.shake = Math.max(G.shake, 2); ring(G.x, G.y, '#eef1ff', 34); }
   G.lastCombo = G.combo;
+  mprog('del40', 1); mprog('run15', G.delivered, true); mprog('score25', G.score, true);
+  if (perfect){ mprog('perf8', 1); mprog('x4', G.combo, true); }
+  if (p.kind === 'ice') mprog('ice3', 1);
+  if (p.kind === 'gas') mprog('gas3', 1);
   if (G.delivered % 10 === 0 && G.mode !== 'daily') bigText(`${G.delivered} DELIVERED!`, '#7fe0ff', 1.6);
   // first time ever: one tip, after the first delivery
   if (!save.tut){ save.tut = true; persist(); setTimeout(() => { if (G && G.state !== 'dead') bigText('PERFECT = skim close to the planet', '#ffe9a6', 2.6, 24); }, perfect ? 900 : 300); }
@@ -729,7 +865,7 @@ function ring(x, y, color, max){ G.rings.push({ x, y, color, r: 6, max, life: 1 
 function bigText(s, color, life = 1.4, size = 40){ G.big = { s, color, life, max: life, size }; }
 function buzz(p){ try { if (navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) navigator.vibrate(p); } catch(e){} }
 function nearMiss(x, y){
-  G.slowT = .55; addText(x, y - 14, 'CLOSE ONE!', '#7fe0ff'); ring(x, y, '#7fe0ff', 40); buzz(20);
+  G.slowT = .55; addText(x, y - 14, 'CLOSE ONE!', '#7fe0ff'); ring(x, y, '#7fe0ff', 40); buzz(20); mprog('close3', 1);
   if (!save.muted) tone(880, .18, 'sine', .05, 1.6);
 }
 
@@ -740,9 +876,10 @@ function update(dt){
 
   if (G.state === 'orbit'){
     const p = G.cur, d = Math.min(G.maxIdx / 35, 1);
-    if (G.launched) G.Rt -= (5 + d * 5) * dt;     // orbits decay: you can't wait forever (but nobody crashes before their first tap)
+    const spin = p.kind === 'ice' ? 1.35 : p.kind === 'gas' ? .82 : 1, decay = p.kind === 'gas' ? .9 : 1;
+    if (G.launched) G.Rt -= (5 + d * 5) * decay * dt;     // orbits decay: you can't wait forever (but nobody crashes before their first tap)
     G.R += (G.Rt - G.R) * Math.min(1, dt * 7);
-    G.a += G.dir * (ORBIT_SPEED + (ORBIT_SPEED_MAX - ORBIT_SPEED) * d) / G.R * dt;   // orbits speed up as you go
+    G.a += G.dir * (ORBIT_SPEED + (ORBIT_SPEED_MAX - ORBIT_SPEED) * d) * spin / G.R * dt;   // orbits speed up as you go
     G.x = p.x + Math.cos(G.a) * G.R; G.y = p.y + Math.sin(G.a) * G.R;
     if (G.R < p.r + 14){ G.warnT -= dt; if (G.warnT <= 0){ sfx.warn(); G.warnT = .22; } }
     if (G.R < p.r + PLAYER_R) crash('Orbit decayed');
@@ -771,11 +908,20 @@ function update(dt){
       if (it.type === 'coin' && !it.got && dist < 20){
         it.got = true; G.coins++;
         G.starChain = G.starT > 0 ? G.starChain + 1 : 0; G.starT = 1.5;      // stars collected close together climb in pitch
+        mprog('star20', 1);
         sfx.coin(G.starChain); burst(it.x, it.y, '#ffd166', 16); ring(it.x, it.y, '#ffd166', 30); addText(it.x, it.y - 12, '+1 ★', '#ffd166'); buzz(8); updateHud();
         const c = $('coins'); c.classList.remove('pop'); void c.offsetWidth; c.classList.add('pop');
       }
-      if (it.type === 'rock' && dist < it.r + PLAYER_R - 2){ crash('Hit an asteroid'); break; }
-      if (it.type === 'rock' && !it.nm && G.state === 'fly' && dist < it.r + PLAYER_R + 9){ it.nm = true; nearMiss(G.x, G.y); }
+      if (it.type === 'rock' && !it.gone && dist < it.r + PLAYER_R - 2){
+        if (G.shield > 0){
+          it.gone = true; burst(it.x, it.y, '#b7f4ff', 26); burst(it.x, it.y, '#8a8fa6', 14); ring(it.x, it.y, '#b7f4ff', 56);
+          addText(it.x, it.y - 16, 'SMASH!', '#b7f4ff'); G.shake = Math.max(G.shake, 8); G.hitStop = .06; buzz(30);
+          if (!save.muted) tone(140, .25, 'sawtooth', .07, .5);
+          continue;
+        }
+        crash('Hit an asteroid'); break;
+      }
+      if (it.type === 'rock' && !it.gone && !it.nm && G.state === 'fly' && G.shield <= 0 && dist < it.r + PLAYER_R + 9){ it.nm = true; nearMiss(G.x, G.y); }
     }
     G.trail.push({ x: G.x, y: G.y, life: TRAIL_LIFE });
   }
@@ -796,7 +942,11 @@ function update(dt){
 
   const cutoff = G.camY + viewH + 400;
   G.planets = G.planets.filter(p => p.y < cutoff || p === G.cur || p === G.from);
-  G.items = G.items.filter(it => it.y < cutoff);
+  G.items = G.items.filter(it => it.y < cutoff && !it.gone);
+  if (G.shield > 0) G.shield -= dt;
+  // the first time a special planet type is the next target: name it
+  const nx = G.planets.find(q => q.idx === G.maxIdx + 1);
+  if (nx && nx.idx !== G.seenNext){ G.seenNext = nx.idx; if (nx.kind && !save.seen[nx.kind]){ save.seen[nx.kind] = true; persist(); bigText(KIND_INFO[nx.kind].label, KIND_INFO[nx.kind].color, 2.2, 30); } }
 
   if (G.mode === 'daily') $('timer').textContent = G.t.toFixed(1) + 's';
 }
@@ -856,9 +1006,17 @@ function draw(){
     ctx.strokeStyle = p === next ? 'rgba(255,209,102,.7)' : 'rgba(190,205,255,.18)';
     ctx.stroke(); ctx.setLineDash([]);
     if (p === next){ const hg = ctx.createRadialGradient(p.x, p.y, p.r, p.x, p.y, p.ring); hg.addColorStop(0, 'rgba(255,209,102,.07)'); hg.addColorStop(1, 'rgba(255,209,102,.015)'); ctx.fillStyle = hg; ctx.fill(); }
-    if (p.ringed) planetRing(p, pal, Math.PI, TAU);
-    const R = p.r * 1.55; ctx.drawImage(planetImg(p), p.x - R, p.y - R, 2 * R, 2 * R);
-    if (p.ringed) planetRing(p, pal, 0, Math.PI);
+    if (p.kind === 'pulsar') drawPulsar(p);
+    else {
+      if (p.ringed) planetRing(p, pal, Math.PI, TAU);
+      const R = p.r * 1.55; ctx.drawImage(planetImg(p), p.x - R, p.y - R, 2 * R, 2 * R);
+      if (p.ringed) planetRing(p, pal, 0, Math.PI);
+      if (p.kind === 'ice') drawFrost(p);
+    }
+    if (p.kind && p === next && !COVER){
+      const info = KIND_INFO[p.kind]; ctx.font = '900 12px ui-rounded,"Nunito",system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const ty = p.y + p.r + (p.kind === 'gas' ? 26 : 18); ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(8,10,40,.85)'; ctx.strokeText(info.label, p.x, ty); ctx.fillStyle = info.color; ctx.fillText(info.label, p.x, ty);
+    }
     if (p.goal){ ctx.font = `${p.r}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('📮', p.x, p.y + 2); }
     else if (p.idx > G.maxIdx){ ctx.font = `${Math.max(13, p.r * .75)}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('📦', p.x, p.y + 1); }
   }
@@ -886,6 +1044,12 @@ function draw(){
   if (G.state !== 'dead'){
     const ang = G.state === 'fly' ? Math.atan2(G.vy, G.vx) : Math.atan2(Math.cos(G.a) * G.dir, -Math.sin(G.a) * G.dir);
     drawShip(G.x, G.y, ang, 1.15, skinColor(G.t), G.t);
+    if (G.shield > 0){
+      const k = clamp(G.shield / .5, 0, 1), w = .5 + Math.sin(G.t * 20) * .15;
+      const g = ctx.createRadialGradient(G.x, G.y, 6, G.x, G.y, 22); g.addColorStop(0, 'rgba(183,244,255,0)'); g.addColorStop(.8, `rgba(183,244,255,${.25 * k})`); g.addColorStop(1, 'rgba(183,244,255,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(G.x, G.y, 22, 0, TAU); ctx.fill();
+      ctx.strokeStyle = `rgba(210,250,255,${w * k})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(G.x, G.y, 17, 0, TAU); ctx.stroke();
+    }
   }
 
   for (const q of G.parts){ ctx.globalAlpha = clamp(q.life / q.max, 0, 1); ctx.fillStyle = q.color; ctx.fillRect(q.x, q.y, q.size, q.size); }
@@ -935,6 +1099,30 @@ function tickFx(dt){
   for (const r of G.rings){ r.life -= dt * 2.2; r.r += (r.max - r.r) * Math.min(1, dt * 9); }
   G.rings = G.rings.filter(r => r.life > 0);
   if (G.big){ G.big.life -= dt; if (G.big.life <= 0) G.big = null; }
+}
+// a pulsar: a hot white core with two sweeping beams
+function drawPulsar(p){
+  const t = G ? G.t : 0, x = p.x, y = p.y, r = p.r;
+  const gl = ctx.createRadialGradient(x, y, 0, x, y, r * 3.2); gl.addColorStop(0, 'rgba(200,250,255,.75)'); gl.addColorStop(.3, 'rgba(90,200,255,.25)'); gl.addColorStop(1, 'rgba(90,160,255,0)');
+  ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(x, y, r * 3.2, 0, TAU); ctx.fill();
+  ctx.save(); ctx.translate(x, y); ctx.rotate(t * 2.4); ctx.globalCompositeOperation = 'lighter';
+  for (const s of [1, -1]){
+    const bg = ctx.createLinearGradient(0, 0, 0, s * r * 4.2); bg.addColorStop(0, 'rgba(210,250,255,.7)'); bg.addColorStop(1, 'rgba(120,200,255,0)');
+    ctx.fillStyle = bg; ctx.beginPath(); ctx.moveTo(-r * .35, 0); ctx.lineTo(0, s * r * 4.2); ctx.lineTo(r * .35, 0); ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+  const pulse = 1 + Math.sin(t * 6) * .06;
+  const core = ctx.createRadialGradient(x - r * .25, y - r * .25, r * .1, x, y, r * pulse); core.addColorStop(0, '#ffffff'); core.addColorStop(.5, '#bff3ff'); core.addColorStop(1, '#3d8cff');
+  ctx.fillStyle = core; ctx.beginPath(); ctx.arc(x, y, r * pulse, 0, TAU); ctx.fill();
+  ctx.strokeStyle = 'rgba(220,250,255,.7)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r * (1.35 + (t * .8 % 1) * .9), 0, TAU); ctx.globalAlpha = 1 - (t * .8 % 1); ctx.stroke(); ctx.globalAlpha = 1;
+}
+// ice planets twinkle with small frost crystals
+function drawFrost(p){
+  const t = G ? G.t : 0;
+  for (let k = 0; k < 5; k++){
+    const a = k * 1.9 + p.idx, d = p.r * (.35 + (k % 3) * .2), x = p.x + Math.cos(a) * d, y = p.y + Math.sin(a) * d, s = 2.2 + 1.6 * Math.max(0, Math.sin(t * 3 + k * 1.7));
+    ctx.fillStyle = 'rgba(240,252,255,.9)'; ctx.beginPath(); ctx.moveTo(x, y - s); ctx.lineTo(x + s * .4, y); ctx.lineTo(x, y + s); ctx.lineTo(x - s * .4, y); ctx.closePath(); ctx.fill();
+  }
 }
 function planetRing(p, pal, a0, a1){
   ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(-.35); ctx.scale(1, .27);
@@ -1018,6 +1206,7 @@ function refreshMenu(){
   $('dSubM').textContent = done ? 'Done · see your result' : 'Same route for everyone today';
   $('muteTx').textContent = 'Sound: ' + (save.muted ? 'off' : 'on');
   $('muteIco').setAttribute('href', save.muted ? '#i-mute' : '#i-sound');
+  renderMissions();
 }
 
 function startRun(mode, practice = false){
@@ -1034,6 +1223,9 @@ function showOver(){
   save.coins += earned; G.coins = 0;
   const isBest = G.score > save.best; if (isBest) save.best = G.score;
   save.runs++; persist();
+  if (!G.counted){ G.counted = true; mprog('runs5', 1); }
+  const list = missionsToday(), doneN = list.filter(m => m.done).length;
+  $('oMis').innerHTML = `<div class="mh">Daily missions <small>${doneN}/3 done${G.newDone.length ? ` · ${G.newDone.length} new!` : ''}</small></div>` + missionRows(G.newDone);
   $('oReason').textContent = G.reason; $('oScore').textContent = G.score;
   $('oBest').textContent = isBest && G.score > 0 ? 'New best!' : `Best ${save.best}`;
   $('oCoins').textContent = earned; $('oTotal').textContent = save.coins;
@@ -1060,6 +1252,8 @@ function finishDaily(success){
   if (screen !== 'play') return;
   screen = 'daily'; Portal.gameplayStop();
   const key = dayKey();
+  if (!G.counted){ G.counted = true; mprog('runs5', 1); }
+  if (!G.practice) mprog('daily', 1);
   if (!G.practice && !save.daily[key]){
     const yesterday = dayKey(new Date(Date.now() - 864e5));
     save.streak = save.lastDaily === yesterday ? save.streak + 1 : 1;
@@ -1151,12 +1345,14 @@ $('resumeBtn').onclick = resume;
 $('pauseBtn').onclick = pause;
 $('muteBtn').onclick = () => { save.muted = !save.muted; persist(); refreshMenu(); };
 
+missionsToday();
+if (!COVER) setTimeout(checkLogin, 600);
 refreshMenu();
 // players who already have runs behind them skip the first-time tips
 if (save.tut === undefined && save.runs > 0){ save.tut = true; persist(); }
 // land straight in gameplay: the first tap launches. ?menu (and the capture tools' ?debug / ?cover) open on the menu instead
 if (!/[?&](debug|cover|menu)(=|&|$)/.test(location.search)) startRun('endless');
-if (/[?&]debug\b/.test(location.search)) window.__oc = { get G(){ return G; }, launch, startRun, step: dt => update(dt), draw, consts: { FLY_SPEED, PLAYER_R } };
+if (/[?&]debug\b/.test(location.search)) window.__oc = { get G(){ return G; }, launch, startRun, step: dt => update(dt), draw, consts: { FLY_SPEED, PLAYER_R }, save, mprog, missionsToday, MISSIONS, checkLogin, showOver, refreshMenu };
 })();
 </script>
 </body>
