@@ -331,6 +331,24 @@ const Portal = (() => {
     document.head.appendChild(s);
   });
 
+  // Saved progress. On CrazyGames it must go through their Data Module: it syncs to the player's
+  // account across devices, and their docs require games to rely on it there instead of local saves.
+  // Everywhere else it is plain localStorage. Neither function ever throws.
+  function localGet(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
+  function localSet(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
+  // resolves with the stored string (or null); on the portal it waits for the SDK to finish loading the player's data
+  function loadSave(key){
+    if (!onPortal) return Promise.resolve(localGet(key));
+    return ready.then(() => {
+      if (sdk && sdk.data){ try { return sdk.data.getItem(key); } catch(e){} }
+      return localGet(key);                 // SDK blocked (ad blocker): keep progress on this device
+    });
+  }
+  function writeSave(key, value){
+    if (sdk && sdk.data){ try { sdk.data.setItem(key, value); return; } catch(e){} }
+    localSet(key, value);
+  }
+
   function placeholder(){
     return new Promise(res => {
       adPlaying = true; applyAudio();
@@ -362,7 +380,7 @@ const Portal = (() => {
     });
   }
   return {
-    onPortal,
+    onPortal, loadSave, writeSave,
     rewarded: () => requestAd('rewarded'),
     interstitial: () => requestAd('midgame'),
     gameplayStart, gameplayStop,
@@ -380,12 +398,20 @@ const EPOCH = new Date(2026, 9, 28);
 function dailyNumber(){ const t = new Date(); t.setHours(0,0,0,0); return Math.round((t - EPOCH) / 864e5) + 1; }
 
 const SAVE_KEY = 'orbitcourier.v1';
-const save = Object.assign({ best:0, coins:0, owned:[0], skin:0, daily:{}, streak:0, lastDaily:'', muted:false, runs:0, mis:null, login:null, seen:{} }, (() => { try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch(e){ return {}; } })());
-function persist(){ try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch(e){} }
+const SAVE_DEFAULTS = () => ({ best:0, coins:0, owned:[0], skin:0, daily:{}, streak:0, lastDaily:'', muted:false, runs:0, mis:null, login:null, seen:{} });
+const parseSave = str => { try { const v = JSON.parse(str); return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; } catch(e){ return {}; } };
+// off CrazyGames the save loads straight away from this browser; on CrazyGames it comes from their Data Module once the SDK is ready (see boot below)
+let saveLoaded = !Portal.onPortal;
+const save = Object.assign(SAVE_DEFAULTS(), saveLoaded ? parseSave((() => { try { return localStorage.getItem(SAVE_KEY); } catch(e){ return null; } })()) : {});
+// nothing is written until the real save has loaded, so the defaults can never overwrite a player's progress
+function persist(){ if (saveLoaded) Portal.writeSave(SAVE_KEY, JSON.stringify(save)); }
 // a damaged save (hand-edited, or half-written) must never stop the game from drawing
-for (const k of ['daily', 'seen']) if (!save[k] || typeof save[k] !== 'object' || Array.isArray(save[k])) save[k] = {};
-for (const k of ['best', 'coins', 'runs']) if (!Number.isFinite(save[k])) save[k] = 0;
-if (!Array.isArray(save.owned) || !save.owned.includes(0)) save.owned = [0].concat(Array.isArray(save.owned) ? save.owned.filter(Number.isInteger) : []);
+function repairSave(){
+  for (const k of ['daily', 'seen']) if (!save[k] || typeof save[k] !== 'object' || Array.isArray(save[k])) save[k] = {};
+  for (const k of ['best', 'coins', 'runs']) if (!Number.isFinite(save[k])) save[k] = 0;
+  if (!Array.isArray(save.owned) || !save.owned.includes(0)) save.owned = [0].concat(Array.isArray(save.owned) ? save.owned.filter(Number.isInteger) : []);
+}
+repairSave();
 
 /* ---------- Daily missions + login streak ----------
    Three missions a day, the same for everyone on a given date. Progress lives in the save;
@@ -1356,13 +1382,27 @@ $('resumeBtn').onclick = resume;
 $('pauseBtn').onclick = pause;
 $('muteBtn').onclick = () => { save.muted = !save.muted; persist(); refreshMenu(); };
 
-missionsToday();
-if (!COVER) setTimeout(checkLogin, 600);
-refreshMenu();
-// players who already have runs behind them skip the first-time tips
-if (save.tut === undefined && save.runs > 0){ save.tut = true; persist(); }
-// land straight in gameplay: the first tap launches. ?menu (and the capture tools' ?debug / ?cover) open on the menu instead
-if (!/[?&](debug|cover|menu)(=|&|$)/.test(location.search)) startRun('endless');
+function boot(){
+  missionsToday();
+  if (!COVER) setTimeout(checkLogin, 600);
+  refreshMenu();
+  // players who already have runs behind them skip the first-time tips
+  if (save.tut === undefined && save.runs > 0){ save.tut = true; persist(); }
+  // land straight in gameplay: the first tap launches. ?menu (and the capture tools' ?debug / ?cover) open on the menu instead
+  if (!/[?&](debug|cover|menu)(=|&|$)/.test(location.search)) startRun('endless');
+  else show('menu');
+}
+if (saveLoaded) boot();
+else {
+  // on CrazyGames: show only the backdrop while the SDK loads the player's save, then start
+  $('menu').classList.remove('on');
+  Portal.loadSave(SAVE_KEY).then(str => {
+    for (const k of Object.keys(save)) delete save[k];
+    Object.assign(save, SAVE_DEFAULTS(), parseSave(str));
+    repairSave(); saveLoaded = true;
+    boot();
+  });
+}
 if (/[?&]debug\b/.test(location.search)) window.__oc = { get G(){ return G; }, launch, startRun, step: dt => update(dt), draw, consts: { FLY_SPEED, PLAYER_R }, save, mprog, missionsToday, MISSIONS, checkLogin, showOver, refreshMenu };
 })();
 </script>
