@@ -382,6 +382,10 @@ function dailyNumber(){ const t = new Date(); t.setHours(0,0,0,0); return Math.r
 const SAVE_KEY = 'orbitcourier.v1';
 const save = Object.assign({ best:0, coins:0, owned:[0], skin:0, daily:{}, streak:0, lastDaily:'', muted:false, runs:0, mis:null, login:null, seen:{} }, (() => { try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch(e){ return {}; } })());
 function persist(){ try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch(e){} }
+// a damaged save (hand-edited, or half-written) must never stop the game from drawing
+for (const k of ['daily', 'seen']) if (!save[k] || typeof save[k] !== 'object' || Array.isArray(save[k])) save[k] = {};
+for (const k of ['best', 'coins', 'runs']) if (!Number.isFinite(save[k])) save[k] = 0;
+if (!Array.isArray(save.owned) || !save.owned.includes(0)) save.owned = [0].concat(Array.isArray(save.owned) ? save.owned.filter(Number.isInteger) : []);
 
 /* ---------- Daily missions + login streak ----------
    Three missions a day, the same for everyone on a given date. Progress lives in the save;
@@ -490,6 +494,7 @@ const SKINS = [
   { name:'Plasma',   color:'#b388ff', cost:300 },
   { name:'Prism',    color:'rainbow', cost:600 },
 ];
+if (!SKINS[save.skin] || !save.owned.includes(save.skin)) save.skin = 0;
 function skinColor(t){ const c = SKINS[save.skin].color; return c === 'rainbow' ? `hsl(${(t * 240) % 360},90%,65%)` : c; }
 
 /* ---------- Canvas ---------- */
@@ -1233,18 +1238,23 @@ function showOver(){
   show('over');
 }
 
+// one ad at a time: a double tap on Continue or Play again used to request two ads
+let adBusy = false;
 async function continueRun(){
-  if (!G || G.continued) return;
-  const ok = await Portal.rewarded();
-  if (!ok) return;
+  if (!G || G.continued || adBusy) return;
+  adBusy = true; let ok = false;
+  try { ok = await Portal.rewarded(); } finally { adBusy = false; }
+  if (!ok || !G || G.continued || screen !== 'over') return;
   G.continued = true; G.combo = 1; G.trail = [];
   enterOrbit(G.cur, G.cur.r + 52, -Math.PI / 2, 1);
   G.from = null; screen = 'play'; updateHud(); show(null); Portal.gameplayStart();
 }
 
 async function playAgain(){
+  if (adBusy) return;
   runsSinceAd++;
-  if (runsSinceAd >= 3){ runsSinceAd = 0; await Portal.interstitial(); }
+  if (runsSinceAd >= 3){ runsSinceAd = 0; adBusy = true; try { await Portal.interstitial(); } finally { adBusy = false; } }
+  if (screen !== 'over') return;               // a second click already started the run
   startRun('endless');
 }
 
@@ -1327,7 +1337,8 @@ function resume(){ paused = false; last = performance.now(); Portal.gameplayStar
 function toMenu(){ G = null; screen = 'menu'; paused = false; Portal.gameplayStop(); refreshMenu(); show('menu'); }
 
 /* ---------- Input ---------- */
-cvs.addEventListener('pointerdown', e => { e.preventDefault(); if (screen === 'play') launch(); });
+// preventDefault stops the browser moving focus, so inside a portal's iframe the keyboard would never reach us: take focus ourselves
+cvs.addEventListener('pointerdown', e => { e.preventDefault(); if (!document.hasFocus()) try { window.focus(); } catch(err){} if (screen === 'play') launch(); });
 addEventListener('keydown', e => {
   if (e.code === 'Space' || e.code === 'Enter'){ e.preventDefault(); if (screen === 'play' && !paused) launch(); }
   if (e.code === 'Escape' || e.code === 'KeyP'){ paused ? resume() : pause(); }
